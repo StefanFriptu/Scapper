@@ -39,7 +39,7 @@ class Application(Frame):
         self.arp = Button(self, text = "ARP Poisoning", command = self.startArp)
         self.arp.grid(row = 20, column = 0)
 
-        self.stoparp = Button(self, text = "Stop poisoning", command = self.stopArp)
+        self.stoparp = Button(self, text = "Stop poisoning", state = 'disabled', command = self.stopArp)
         self.stoparp.grid(row = 22, column = 0)
 
         #self.dns = Button(self, text = "DNS Spoofing") # command = self.start dns
@@ -72,6 +72,9 @@ class Application(Frame):
         self.selfIp = "192.168.56.103"
         
     def startArp(self):
+        self.arp['state'] = 'disabled'
+        self.stoparp['state'] = 'normal'
+        
         self.victimIp  = self.uArpEntryIpVictim.get()
         self.victimMac = GetMacFromIp(self.victimIp)
 
@@ -85,8 +88,11 @@ class Application(Frame):
         self.capture_t.start()
 
     def stopArp(self):
+        print "[ARP] Sending stop signal to threads"
         self.poison_t.killed = True
         self.capture_t.killed = True
+        self.arp['state'] = 'normal'
+        self.stoparp['state'] = 'disabled'
      
     def arp_poison(self):
         while True:
