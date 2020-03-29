@@ -39,22 +39,26 @@ class Application(Frame):
         self.capture_t.killed = False
         
         # Create interface
+        self.grid_columnconfigure(2, minsize = 120)
         self.arp = Button(self, text = "ARP Poisoning", command = self.startArp)
         self.arp.grid(row = 20, column = 0)
 
         self.stoparp = Button(self, text = "Stop poisoning", state = 'disabled', command = self.stopArp)
         self.stoparp.grid(row = 22, column = 0)
 
-        #self.dns = Button(self, text = "DNS Spoofing") # command = self.start dns
-        #self.dns.grid(row = 8, column = 4)
+        self.dns = Button(self, text = "DNS Spoofing") # command = self.start dns
+        self.dns.grid(row = 20, column = 5)
 
-        self.grid_columnconfigure(2, minsize = 120)
+        self.uExitButton = Button(self, text = "Save pcap and exit", command = self.exit)
+        self.uExitButton.grid(row = 25, column = 2)
 
-        self.uExitButton = Button(self, text = "Exit", command = self.exit)
-        self.uExitButton.grid(row = 10, column = 2)
+        Label(self, text = "IP Victim:   ").grid(row = 2)
+        Label(self, text = "IP Server:   ").grid(row = 6)
 
-        Label(self, text = "IP Victim: ").grid(row = 2)
-        Label(self, text = "IP Server: ").grid(row = 6)
+        Label(self, text = "IP Victims:      ").grid(row = 2, column = 4)
+        Label(self, text = "Sites to spoof:  ").grid(row = 6, column = 4)
+        Label(self, text = "Redirect IPs to: ").grid(row = 10, column = 4)
+        Label(self, text = "DNS server:      ").grid(row = 14, column = 4)
 
         # Configure field victim's ip for arp attack
         self.uArpEntryIpVictim = Entry(self)
@@ -67,6 +71,21 @@ class Application(Frame):
         self.uArpEntryIpServer.insert(END, "192.168.56.102")
         #self.uArpEntryIpServer.bind("<Key>", self.click)
         self.uArpEntryIpServer.grid(row = 6, column = 1)
+
+
+        # Configure field victim's ip for DNS attack
+        self.uDnsEntryIpVictim = Entry(self)
+        self.uDnsEntryIpVictim.grid(row = 2, column = 5)
+
+        self.uDnsEntryDomains = Entry(self)
+        self.uDnsEntryDomains.grid(row = 6, column = 5)
+
+        self.uDnsEntryIpRedirect = Entry(self)
+        self.uDnsEntryIpRedirect.grid(row = 10, column = 5)
+
+        self.uDnsEntryIpDNS = Entry(self)
+        self.uDnsEntryIpDNS.grid(row = 14, column = 5)
+        
         
         # Configure self
         self.interceptedPackets = []
